@@ -1,6 +1,6 @@
 //
 // Game Networking Sockets is a cleaned-up version of steam's networking library.
-// This is a simplify and un-steamify the binding so that it will be easy to use.
+// This is a simplified and un-steamify binding so intended to be easy to use.
 //
 
 #import "Basic"; // print
@@ -1982,15 +1982,6 @@ GlobalInterfaceWrapper :: inline ($pp : **$T) -> *T
     return << pp;
 }
 
-#if      OS == .WINDOWS lib :: #foreign_library   "win/GameNetworkingSockets";
-else #if OS == .LINUX   lib :: #foreign_library "linux/GameNetworkingSockets"; // @TODO not built
-else #if OS == .MACOS   lib :: #foreign_library   "mac/GameNetworkingSockets"; // @TODO not built
-
-// @TODO
-// k_*  Remove all this crap (DONE)
-// e_*  Remove all this crap (DONE)
-// _t   Remove all this crap (DONE)
-// m_*  Remove all this crap (Not doing)
-// Remove excess spaces/tabs at the end of the lines (DONE)
-// ConnectionEnd (DONE)
-// STEAM
+#if      OS == .WINDOWS lib :: #foreign_library "win/GameNetworkingSockets";
+else #if OS == .LINUX   lib :: #foreign_library "linux/libGameNetworkingSockets";
+else #if OS == .MACOS   lib :: #foreign_library "mac/GameNetworkingSockets"; // @TODO UNTESTED
