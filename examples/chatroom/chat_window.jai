@@ -302,8 +302,8 @@ draw_text :: (font: *Dynamic_Font, color: Vector4, x: int, y: int, fmt: string, 
         v3 := V(it.x0, it.y1, it.u0, it.v1);
         add_quad(*vertices, v0, v1, v2, v3);
 
-        if (it.map && it.map.platform_specific.gl_handle) {
-            // @TODO what if the set of quads uses multiple texture maps?
+        if (it.map && it.map.platform_specific.gl_handle) 
+        {
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, it.map.platform_specific.gl_handle);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);

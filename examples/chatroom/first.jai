@@ -1,3 +1,25 @@
+//
+// A simple chatroom application using gns-jai
+//
+
+// Help message for when parameters fail to parse
+cmd_line_prompt_help_message :: #string DONE
+Please enter a valid command line argument:
++------------------------------------------------------------+
+|  //             <ip>        <port>                         |
+|  -client server 192.168.0.1:12345                          |
+|  -client server 192.168.0.1      // Defaults to port 27020 |
+|                                                            |
+|  // local host    <port>                                   |
+|  -client loopback 12345                                    |
+|  -client loopback                // Defaults to port 27020 |
+|                                                            |
+|  //      <port>                                            |
+|  -server 12345                                             |
+|  -server                         // Defaults to port 27020 |
++------------------------------------------------------------+
+DONE
+
 #import "Basic";
 #import "Random";
 #import "String";
@@ -45,7 +67,7 @@ ServerData :: struct
     is_quitting : bool;    
 }
 
-InitializeClient :: (client : *ClientData)
+InitializeClient :: (client : *ClientData) -> sucess: bool
 {
     // Start connecting
     connectionAddr : [ IPAddr.MaxStringIPAddrSize ] s8;
@@ -61,8 +83,10 @@ InitializeClient :: (client : *ClientData)
     if client.connection == .Invalid 
     {
         print("Client: ConnectByIPAddress() failed!\n");
-        return; // @TODO error code?
+        return false;
     }
+
+    return true;
 }
 
 UpdateClient :: (client : *ClientData, chat : *ChatWindowData)
@@ -227,39 +251,37 @@ ClientNetConnectionStatusChanged :: (client : *ClientData, pInfo : *ConnectionSt
     }
 }
 
-
-
-InitializeServer :: (server : *ServerData)
+InitializeServer :: (server : *ServerData) -> sucess: bool
 {
-    // Start listening
+    // Start listening socket
+    serverLocalAddr : IPAddr;
+    IPAddr.Clear(*serverLocalAddr);
+    serverLocalAddr.m_port = server.port;
+    
+    options : [1] ConfigValue;
+
+    // Set callback handler
+    ConfigValue.SetPtr(*options[0], .Callback_ConnectionStatusChanged, xx ServerNetConnectionStatusChanged);
+
+    // Create Listen Socket
+    server.listen_socket = Sockets.CreateListenSocketIP(*serverLocalAddr, options.count, options.data);
+    if server.listen_socket == .Invalid
     {
-        serverLocalAddr : IPAddr;
-        IPAddr.Clear(*serverLocalAddr);
-        serverLocalAddr.m_port = server.port;
-        
-        options : [1] ConfigValue;
-
-        // Set callback handler
-        ConfigValue.SetPtr(*options[0], .Callback_ConnectionStatusChanged, xx ServerNetConnectionStatusChanged);
-
-        // Create Listen Socket
-        server.listen_socket = Sockets.CreateListenSocketIP(*serverLocalAddr, options.count, options.data);
-        if server.listen_socket == .Invalid
-        {
-            print("FATAL ERROR: Sockets.CreateListenSocketIP() failed!\n");
-            return;
-        }
-
-        // Create Poll Group
-        server.poll_group = Sockets.CreatePollGroup();
-        if server.poll_group == .Invalid
-        {
-            print("FATAL ERROR: Sockets.CreatePollGroup() failedServer\n");
-            return;
-        }
-
-        print("Server listening on port %\n", server.port);
+        print("FATAL ERROR: Sockets.CreateListenSocketIP() failed!\n");
+        return false;
     }
+
+    // Create Poll Group
+    server.poll_group = Sockets.CreatePollGroup();
+    if server.poll_group == .Invalid
+    {
+        Sockets.CloseListenSocket(server.listen_socket);
+        print("FATAL ERROR: Sockets.CreatePollGroup() failedServer\n");
+        return false;
+    }
+
+    print("Server listening on port %\n", server.port);
+    return true;
 }
 
 FinalizeServer :: (server :*ServerData)
@@ -350,6 +372,21 @@ UpdateServer :: (server : *ServerData)
             if isCommand
             {
                 cmd, args := splitInTwo(message_view, #char" ");
+                
+                if (cmd == "/help")
+                {
+                    ServerHelpMsg :: string.[
+                        "Available commands:",
+                        "/nick <nick_name>      // change your name",
+                        "/quit                  // quit program",
+                    ];
+
+                    for ServerHelpMsg
+                    {
+                        SendStringToClient(<< client, it);
+                    }
+                    continue;
+                }
 
                 if (cmd == "/nick")
                 {
@@ -396,8 +433,6 @@ UpdateServer :: (server : *ServerData)
 
     // run callbacks
     Sockets.RunCallbacks();
-
-
 }
 
 ServerNetConnectionStatusChanged :: (pInfo : *ConnectionStatusChanged) -> void #c_call
@@ -410,14 +445,14 @@ ServerNetConnectionStatusChanged :: (pInfo : *ConnectionStatusChanged) -> void #
 }
 ServerNetConnectionStatusChanged :: (server : *ServerData, pInfo : *ConnectionStatusChanged)
 {
-    if pInfo.m_info.m_eState == {
+    if pInfo.m_info.m_eState == 
+    {
         case .None;
         // NOTE: We will get callbacks here when we destroy connections.  You can ignore these.
 
         case .ClosedByPeer; #through;
         case .ProblemDetectedLocally;
         {
-
             // Ignore if they were not previously connected.  (If they disconnected
             // before we accepted the connection.)
             if (pInfo.m_eOldState == .Connected)
@@ -428,11 +463,11 @@ ServerNetConnectionStatusChanged :: (server : *ServerData, pInfo : *ConnectionSt
                 // and connection change callbacks are dispatched in queue order.
                 client : *ServerData.Client;
                 clientIndex := 0;
-                for server.clients
+                for * server.clients
                 {
                     if it.connection == pInfo.m_conn
                     {
-                        client = *it;
+                        client = it;
                         clientIndex += it_index;
                         break;
                     }
@@ -493,11 +528,11 @@ ServerNetConnectionStatusChanged :: (server : *ServerData, pInfo : *ConnectionSt
         {
             // This must be a new connection
             {
-                for server.clients
+                for * server.clients
                 {
                     if (it.connection == pInfo.m_conn)
                     {
-                        assert(false, "!!! ERROR BUG !!!\n");
+                        assert(false, "Connecting connection already added! This shouldn't ever happen. BUG!\n");
                     }
                 }
             }
@@ -509,9 +544,9 @@ ServerNetConnectionStatusChanged :: (server : *ServerData, pInfo : *ConnectionSt
             // Try to accept the connection.
             if (Sockets.AcceptConnection(pInfo.m_conn) != .OK)
             {
-                // This could fail.  If the remote host tried to connect, but then
-                // disconnected, the connection may already be half closed. Just
-                // destroy whatever we have on our side.
+                // This could fail.  If the remote host tried to connect, but
+                // then disconnected, the connection may already be half closed.
+                // Just destroy whatever we have on our side.
                 Sockets.CloseConnection(pInfo.m_conn, 0, null, false);
                 print("Can't accept connection.  (It was already closed?)\n");
                 return;
@@ -617,21 +652,12 @@ DebugOutput :: (level : DebugOutputLevel, pszMsg : *s8) -> void #c_call
         
         print("[gns]%:%\n", time_since_start * 0.000_001, msg);
         
-        
-        //fflush(stdout);
         if (level == .Bug)
         {
-            // assert(false, "DebugOutput passed BUG error code");
-            // fflush(stdout);
-            // fflush(stderr);
-            // NukeProcess(1);
+            // Add level specific handling
         }
     }
 }
-
-// @TODO remove
-COMPILER :: #import "Compiler";
-#run COMPILER.compiler_set_type_info_flags(GL_Procedures, .NO_SIZE_COMPLAINT);
 
 main :: () 
 {
@@ -641,20 +667,19 @@ main :: ()
         return;
     }
     
-    // Initialize GNS library
-    gnsInit := GameNetworkingSockets.Initialize();
-    defer 
+    // Initialize GNS librarydefer 
+    if !GameNetworkingSockets.Initialize()
+    {
+        print("GameNetworkingSockets.Initialize() failed!\n");
+        return;
+    }
+    defer
     {
         GameNetworkingSockets.Finalize();
         // Give a little time for sockets to shutdown
         sleep_milliseconds(500); 
     }
 
-    if (!gnsInit)
-    {
-        print("GameNetworkingSockets.Initialize() failed!\n");
-        return;
-    }
     
     g_logTimeZero = Utils.GetLocalTimestamp();
     
@@ -663,7 +688,9 @@ main :: ()
 
     if g_isClient
     {
-        InitializeClient(*g_client);
+        if !InitializeClient(*g_client) then return;
+        defer FinalizeClient(*g_client);
+
         g_chat.window_title = "Chatroom";
         InitializeChatWindow(g_chat);
         
@@ -672,36 +699,32 @@ main :: ()
             UpdateClient(*g_client, *g_chat);
             g_client.is_quitting |= UpdateChatWindow(*g_chat);
         }
-
-        FinalizeClient(*g_client);
     }
     else if g_isServer
     {
-        InitializeServer(*g_server);
+        if !InitializeServer(*g_server) then return;
+        defer FinalizeServer(*g_server);
         
-        // Server has a local host client
-        {
-            loopbackIPv4 : u32 = 0x7F_00_00_01;
-            IPAddr.SetIPv4(*g_client.endpoint, loopbackIPv4, g_server.port);
-            InitializeClient(*g_client);
+        // setup server's local client
+        loopbackIPv4 : u32 = 0x7F_00_00_01;
+        IPAddr.SetIPv4(*g_client.endpoint, loopbackIPv4, g_server.port);
+        if !InitializeClient(*g_client) then return;
+        defer FinalizeClient(*g_client);
 
-            g_chat.window_title = "Chatroom (Server)";
-            InitializeChatWindow(g_chat);
-        }
+        // setup server's client window
+        g_chat.window_title = "Chatroom (Server)";
+        InitializeChatWindow(g_chat);
 
-        while !g_server.is_quitting || !g_client.is_quitting
+        while !g_server.is_quitting && !g_client.is_quitting
         {
             UpdateServer(*g_server);
             g_server.is_quitting |= UpdateChatWindow(*g_chat);
             UpdateClient(*g_client, *g_chat);
         }
-
-        FinalizeServer(*g_server);
-        FinalizeClient(*g_client);
     }
     else
     {
-        print("ERROR: !!BUG!! Neither isClient nor isServer was set. Shouldn't get here!\n");
+        print("ERROR: !!BUG!! Neither g_isClient nor g_isServer was set. Shouldn't get here!\n");
     }
     
 }
@@ -734,23 +757,6 @@ print_command_line_argument_help_msg :: ()
 {
     print("%", cmd_line_prompt_help_message);
 }
-// Help message for when parameters fail to parse
-cmd_line_prompt_help_message :: #string DONE
-Please enter a valid command line argument:
-+------------------------------------------------------------+
-|  //             <ip>        <port>                         |
-|  -client server 192.168.0.1:12345                          |
-|  -client server 192.168.0.1       // Defaults to port 6789 |
-|                                                            |
-|  // local host    <port>          //@TODO                  |
-|  -client loopback 12345           //@TODO                  |
-|  -client loopback          //@TODO// Defaults to port 6789 |
-|                                                            |
-|  //      <port>                                            |
-|  -server 12345                                             |
-|  -server                          // Defaults to port 6789 |
-+------------------------------------------------------------+
-DONE
 
 handle_command_line_arguments :: (client : *ClientData, server : *ServerData) -> success : bool 
 {
@@ -769,9 +775,6 @@ handle_command_line_arguments :: (client : *ClientData, server : *ServerData) ->
         
         arg_index += 1;
     }
-    
-    ProgramTypeArgIndex :: 1;
-    
     
     if args[1] ==
     {
@@ -792,8 +795,13 @@ handle_command_line_arguments :: (client : *ClientData, server : *ServerData) ->
                     
                     if (args.count > 3)
                     {
-                        port : u16 = DefaultPort; // @TODO // @TODO
-                        IPAddr.SetIPv4(*client.endpoint, loopbackIPv4, port);
+                        port, valid := to_integer(args[3]);
+                        if !valid 
+                        {
+                            print("Could not parse port number \"%\"\n", args[2]);
+                            return false;
+                        }
+                        IPAddr.SetIPv4(*client.endpoint, loopbackIPv4, xx port);
                     }
                     else
                     {
@@ -808,9 +816,13 @@ handle_command_line_arguments :: (client : *ClientData, server : *ServerData) ->
             
             if args.count > 2
             {
-                port : u16 = DefaultPort; // @TODO // @TODO
-                // args[2] // @TODO
-                g_server.port = port;
+                port, valid := to_integer(args[2]);
+                if !valid 
+                {
+                    print("Could not parse port number \"%\"\n", args[2]);
+                    return false;
+                }
+                g_server.port = xx port;
             }
             else
             {

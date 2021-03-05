@@ -11,19 +11,19 @@ GameNetworkingSockets :: struct
     Initialize :: (pIdentity : *Identity = null) -> success : bool
     {
         hasFailed : bool = false;
-        errBuff : [MaxNetworkingErrMsgSize] s8;
-
-        // Initialize the library.  Optionally, you can set an initial identity for the default
-        // interface that is returned by SteamNetworkingSockets().  On failure, false is returned,
-        // and a non-localized diagnostic message is returned.
+        
+        err : *s8;
+        // Initialize the library.  Optionally, you can set an initial identity
+        // for the default interface that is returned by SteamNetworkingSockets().
+        // On failure, false is returned, and a non-localized diagnostic message is returned.
         GameNetworkingSockets_Init :: (pIdentity: *Identity, errMsg: *NetworkingErrMsg) -> bool #foreign lib "GameNetworkingSockets_Init";
-        hasFailed |= (GameNetworkingSockets_Init(pIdentity, *errBuff.data) == false);
+        hasFailed |= (GameNetworkingSockets_Init(pIdentity, *err) == false);
 
         if hasFailed
         {
             errMsg : string;
-            errMsg.data = xx errBuff.data;
-            errMsg.count = c_style_strlen(xx errBuff.data);
+            errMsg.data = xx err;
+            errMsg.count = c_style_strlen(xx err);
             print("GameNetworkingSocket_Init() failed! ErrMsg: %\n", errMsg);
         } 
 
@@ -32,7 +32,7 @@ GameNetworkingSockets :: struct
         if hasFailed then print("GetISockets() failed!\n");
 
         g_utils_interface = GetIUtils();
-        hasFailed |= (g_utils_interface       == null);
+        hasFailed |= (g_utils_interface == null);
         if hasFailed then print("GetIUtils() failed!\n");
 
         return !hasFailed;
@@ -40,8 +40,8 @@ GameNetworkingSockets :: struct
 
     Finalize :: ()
     {
-        g_sockets_interface     = null;
-        g_utils_interface       = null;
+        g_sockets_interface = null;
+        g_utils_interface   = null;
 
         // Close all connections and listen sockets and free all resources
         GameNetworkingSockets_Kill :: () #c_call #foreign lib "GameNetworkingSockets_Kill";
@@ -281,7 +281,7 @@ WrapISockets :: struct(s : () -> *ISockets)
     // if sending was successful.  If sending failed, then a negative EResult
     // value is placed into the array.  For example, the array will hold
     // -Result.InvalidState if the connection was in an invalid state.
-    // See ISockets::SendMessageToConnection for possible
+    // See ISockets.SendMessageToConnection for possible
     // failure codes.
     SendMessages :: (nMessages: s32, pMessages: **NetworkingMessage, pOutMessageNumberOrResult: *s64) { s().SendMessages(s(), nMessages, pMessages, pOutMessageNumberOrResult); }
 
@@ -464,21 +464,21 @@ WrapISockets :: struct(s : () -> *ISockets)
     // size.  (256 bytes is a very conservative estimate.)
     //
     // Pass this blob to your game coordinator and call SteamDatagram_CreateCert.
-    GetCertificateRequest :: (pcbBlob: *s32, pBlob: *void, errMsg: *NetworkingErrMsg) -> bool  { return s().GetCertificateRequest(s(), pcbBlob, pBlob, errMsg); }
+    GetCertificateRequest :: (pcbBlob: *s32, pBlob: *void, errMsg: *NetworkingErrMsg) -> bool { return s().GetCertificateRequest(s(), pcbBlob, pBlob, errMsg); }
 
     // Set the certificate.  The certificate blob should be the output of SteamDatagram_CreateCert.
     SetCertificate  :: (pCertificate: *void, cbCertificate: s32, errMsg: *NetworkingErrMsg) -> bool  { return s().SetCertificate(s(), pCertificate, cbCertificate, errMsg); }
 
     // Invoke all callback functions queued for this interface.
     // See ConfigValueLabel.Callback_ConnectionStatusChanged, etc
-    RunCallbacks    :: ()    {  s().RunCallbacks(s()); }
+    RunCallbacks :: () {  s().RunCallbacks(s()); }
 }
 
 // Wrapper around IUtils to enable Utils.functionName to pass the interface pointer
 WrapIUtils :: struct(s : () -> *IUtils)
 {
     // Allocate and initialize a message object.  Usually the reason
-    // you call this is to pass it to ISockets::SendMessages.
+    // you call this is to pass it to ISockets.SendMessages.
     // The returned object will have all of the relevant fields cleared to zero.
     //
     // Optionally you can also request that this system allocate space to
@@ -548,7 +548,7 @@ WrapIUtils :: struct(s : () -> *IUtils)
     SetGlobalConfigValuePtr    :: (valueLabel: ConfigValueLabel, val: *void)   -> bool { return s().SetGlobalConfigValuePtr   (s(), valueLabel, val); };
     SetConnectionConfigValueInt32  :: (conn: NetConnection, valueLabel: ConfigValueLabel, val: s32)     -> bool { return s().SetConnectionConfigValueInt32 (s(), conn, valueLabel, val); }
     SetConnectionConfigValueFloat  :: (conn: NetConnection, valueLabel: ConfigValueLabel, val: float32) -> bool { return s().SetConnectionConfigValueFloat (s(), conn, valueLabel, val); }
-    SetConnectionConfigValueString :: (conn: NetConnection, valueLabel: ConfigValueLabel, val: *s8)     -> bool{ return s().SetConnectionConfigValueString(s(), conn, valueLabel, val); }
+    SetConnectionConfigValueString :: (conn: NetConnection, valueLabel: ConfigValueLabel, val: *s8)     -> bool { return s().SetConnectionConfigValueString(s(), conn, valueLabel, val); }
 
     //
     // Set global callbacks. ISockets.RunCallbacks() will invoke these methods.
@@ -766,7 +766,6 @@ NetworkingSend :: enum s32
     // use this flag if you have a really good reason and understand what you are doing.
     // Otherwise you will probably just make performance worse.
     UseCurrentThread :: 16;
-
 }
 
 //
@@ -964,15 +963,17 @@ IPAddr :: struct
     IPv6 :: [16] u8;
     IPv4 :: [16] u8;
 
-    // @TODO @COMPILER BUG, Jai compiler version 0.49
+    //
+    // @TODO @COMPILER BUG, Jai compiler version 0.50
     // Using IPv4 gives the struct the incorrect size.
-    //IPv4 :: struct // IPv4 "mapped address" (rfc4038 section 4.2) 
-    //{
-    //    m_8zeros : u64;
-    //    m_0000   : u16;
-    //    m_ffff   : u16;
-    //    m_ip     : [4] u8; // NOTE: As bytes, i.e. network byte order
-    //};
+    //
+    // IPv4 :: struct // IPv4 "mapped address" (rfc4038 section 4.2) 
+    // {
+    //     m_8zeros : u64;
+    //     m_0000   : u16;
+    //     m_ffff   : u16;
+    //     m_ip     : [4] u8; // NOTE: As bytes, i.e. network byte order
+    // };
 
     // Data
     union
@@ -1188,7 +1189,7 @@ ConnectionState :: enum s32
 // to HTTP error codes: the numeric range gives you a rough classification as to the source
 // of the problem.
 //
-ConnectionEnd :: enum s32  // @TODO
+ConnectionEnd :: enum s32
 {
     // Invalid/sentinel value
     Invalid :: 0;
@@ -1483,7 +1484,7 @@ ConfigDataType :: enum s32
     _s32      :: 1;
     _s64      :: 2;
     _float32  :: 3;
-    _c_string :: 4;
+    _c_string :: 4; // null terminated
     _ptr      :: 5;
 }
 
@@ -1889,11 +1890,8 @@ ConnectionStatusChanged :: struct
 // This callback is posted whenever the state of our readiness changes.
 AuthenticationStatus :: struct
 {
-    // Status
-    m_eAvail: NetworkAvailability;
-
-    // Non-localized English language status. For diagnostic/debugging purposes only.
-    m_debugMsg: [256] s8;
+    m_eAvail: NetworkAvailability; // Status
+    m_debugMsg: [256] s8;          // Non-localized English language status. For diagnostic/debugging purposes only.
 }
 
 uint64_steamid :: u64; // Used when passing or returning CSteamID
@@ -1940,8 +1938,6 @@ ISockets :: struct
 // See WrapIUtils for API comments
 IUtils :: struct
 {
-    // Types
-    
     //
     // Return value of IUtils.GetConfigValue
     //
@@ -1982,6 +1978,6 @@ GlobalInterfaceWrapper :: inline ($pp : **$T) -> *T
     return << pp;
 }
 
-#if      OS == .WINDOWS lib :: #foreign_library "win/GameNetworkingSockets";
-else #if OS == .LINUX   lib :: #foreign_library "linux/libGameNetworkingSockets";
-else #if OS == .MACOS   lib :: #foreign_library "mac/GameNetworkingSockets"; // @TODO UNTESTED
+#if      OS == .WINDOWS lib :: #foreign_library,no_dll "win/GameNetworkingSockets";
+else #if OS == .LINUX   lib :: #foreign_library        "linux/libGameNetworkingSockets"; // UNTESTED
+else #if OS == .MACOS   lib :: #foreign_library        "mac/GameNetworkingSockets";      // UNTESTED
