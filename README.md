@@ -7,7 +7,7 @@ GameNetworkingSockets github repository: https://github.com/ValveSoftware/GameNe
 Module Install Instructions:
 ============================
 
-These bindings are done such that you can drop them into the modules folder. It is recommended you clone the repository into the modules folder with the folder name "GameNetworkingSockets". This name designation is not required, but the provided samples are expecting a module called "GameNetworkingSockets".
+These bindings are done such that you can drop them into the modules folder.
 
 Provided binary/API details:
 ```
@@ -22,4 +22,4 @@ Release v1.2.0
 commit 5fe10494e27be722d18c443dc70f851541e5d554
 ```
 
-This project is in development and will change a fair amount as it matures. If you have any questions feel free to ask me on twitter https://twitter.com/MicahRust
+If you have any questions feel free to ask me on twitter https://twitter.com/MicahRust
