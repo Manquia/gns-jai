@@ -24,7 +24,7 @@ DONE
 #import "Random";
 #import "String";
 
-#import "GameNetworkingSockets";
+#import "gns-jai";
 
 // The chat window
 #load "chat_window.jai";
@@ -169,7 +169,7 @@ UpdateClient :: (client : *ClientData, chat : *ChatWindowData)
         }
 
         // Message isn't a command. Just plane text.
-        Sockets.SendMessageToConnection(client.connection, enter_field.data, xx enter_field.count, .Reliable, null);
+        Sockets.SendStringToConnection(client.connection, enter_field, .Reliable, null);
     }
     
     // Do socket callbacks
@@ -623,13 +623,13 @@ ServerNetConnectionStatusChanged :: (server : *ServerData, pInfo : *ConnectionSt
 
 SendStringToClient :: (client : ServerData.Client, str : string)
 {
-    Sockets.SendMessageToConnection(client.connection, str.data, xx str.count, .Reliable, null);
+    Sockets.SendStringToConnection(client.connection, str, .Reliable, null);
 }
 SendStringToClients :: (clients : [] ServerData.Client, str : string)
 {
     for * clients
     {
-        Sockets.SendMessageToConnection(it.connection, str.data, xx str.count, .Reliable, null);
+        Sockets.SendStringToConnection(it.connection, str, .Reliable, null);
     }
 }
 

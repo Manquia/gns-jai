@@ -40,9 +40,6 @@ GameNetworkingSockets :: struct
 
     Finalize :: ()
     {
-        g_sockets_interface = null;
-        g_utils_interface   = null;
-
         // Close all connections and listen sockets and free all resources
         GameNetworkingSockets_Kill :: () #c_call #foreign lib "GameNetworkingSockets_Kill";
         GameNetworkingSockets_Kill();
@@ -249,7 +246,8 @@ WrapISockets :: struct(s : () -> *ISockets)
     //   we were not ready to send it.
     // - Result.LimitExceeded: there was already too much data queued to be sent.
     //   (See ConfigValueLabel.SendBufferSize)
-    SendMessageToConnection :: (conn: NetConnection, data: *void, cbData: u32, sendFlags: NetworkingSend, pOutMessageNumber: *s64) -> Result { return s().SendMessageToConnection(s(), conn, data, cbData, sendFlags, pOutMessageNumber); }
+    SendMessageToConnection :: (conn: NetConnection, data: *void, cbData: u32, sendFlags: NetworkingSend, pOutMessageNumber: *s64) -> Result { return s().SendMessageToConnection(s(), conn, data,        cbData,    sendFlags, pOutMessageNumber); }
+    SendStringToConnection  :: (conn: NetConnection, str: string, sendFlags: NetworkingSend, pOutMessageNumber: *s64) -> Result              { return s().SendMessageToConnection(s(), conn, str.data, xx str.count, sendFlags, pOutMessageNumber); }
 
     // Send one or more messages without copying the message payload.
     // This is the most efficient way to send messages. To use this
