@@ -108,7 +108,7 @@ UpdateClient :: (client : *ClientData, chat : *ChatWindowData)
             return;
         }
 
-        assert(numMsgs <= incommingMessages.count, "Invalid number of messages recieved");
+        assert(numMsgs <= incommingMessages.count, "Invalid number of messages recieved\n");
 
         // Handle messages
         for 0..numMsgs-1
@@ -217,16 +217,16 @@ ClientNetConnectionStatusChanged :: (client : *ClientData, pInfo : *ConnectionSt
             {
                 // Note: we could distinguish between a timeout, a rejected connection,
                 // or some other transport problem.
-                print("We sought the remote host, yet our efforts were met with defeat. (%)", end_debug_view);
+                print("We sought the remote host, yet our efforts were met with defeat. (%)\n", end_debug_view);
             }
             else if pInfo.m_info.m_eState == .ProblemDetectedLocally
             {
-                print("Alas, troubles beset us; we have lost contact with the host. (%)", end_debug_view);
+                print("Alas, troubles beset us; we have lost contact with the host. (%)\n", end_debug_view);
             }
             else
             {
                 // NOTE: We could check the reason code for a normal disconnection
-                print("The host hath bidden us farewell.  (%)", end_debug_view);
+                print("The host hath bidden us farewell.  (%)\n", end_debug_view);
             }
 
             // Clean up the connection.  This is important!
@@ -334,7 +334,7 @@ UpdateServer :: (server : *ServerData)
             return;
         }
 
-        assert(numMsgs <= incommingMessages.count, "Invalid number of messages recieved");
+        assert(numMsgs <= incommingMessages.count, "Invalid number of messages recieved\n");
 
         // Handle messages
         for 0..numMsgs-1
