@@ -189,7 +189,6 @@ finish_frame :: ()
 WINDOW_WIDTH  :: 700;
 WINDOW_HEIGHT :: 300;
 FONT_HEIGHT :: 18;
-fps_time := 0.0;
 last_time: float64;
 elapsed_time: float64;
 TICK_PERIOD : float64 : 1.0/60.0; // time between game updates
