@@ -24,7 +24,8 @@ DONE
 #import "Random";
 #import "String";
 
-#import "gns-jai";
+#load "../../module.jai"; // gns-jai
+//#import "gns-jai";
 
 // The chat window
 #load "chat_window.jai";
