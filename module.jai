@@ -1898,39 +1898,62 @@ intptr         :: u64; // Used for scopeObj
 ConnectionStatusChangedFunctionType     :: #type (a0: *ConnectionStatusChanged) -> void #c_call;
 AuthenticationStatusChangedFunctionType :: #type (a0: *AuthenticationStatus)    -> void #c_call;
 
+ISteamNetworkingConnectionSignaling :: void;
+//
+// Custom signaling functions
+//
+FSteamNetworkingSocketsCustomSignaling_SendSignal :: #type (ctx: *void, hConn: NetConnection, info: *ConnectionInfo, pMsg: *void, cbMsg: s32 ) -> bool #c_call;
+FSteamNetworkingSocketsCustomSignaling_Release    :: #type (ctx: *void) #c_call;
+SteamAPI_ISteamNetworkingSockets_CreateCustomSignaling :: (
+    ctx: *void,                                                      //< pointer to something useful you understand.  Will be passed to your callbacks.
+	fnSendSignal: FSteamNetworkingSocketsCustomSignaling_SendSignal, //< Callback to send a signal.   See ISteamNetworkingConnectionSignaling::SendSignal
+	fnRelease: FSteamNetworkingSocketsCustomSignaling_Release        //< callback to do any cleanup.  See ISteamNetworkingConnectionSignaling::Release.  You can pass NULL if you don't need to do any cleanup.
+) -> *ISteamNetworkingConnectionSignaling #foreign lib "SteamAPI_ISteamNetworkingSockets_CreateCustomSignaling";
+
+FSteamNetworkingCustomSignalingRecvContext_OnConnectRequest    :: #type (ctx: *void, hConn: NetConnection, identityPeer: *Identity, nLocalVirtualPort: s32) -> *ISteamNetworkingConnectionSignaling #c_call;
+FSteamNetworkingCustomSignalingRecvContext_SendRejectionSignal :: #type (ctx: *void, identityPeer: *Identity, pMsg: *void, cbMsg: s32) #c_call;
+// Same as SteamAPI_ISteamNetworkingSockets_ReceivedP2PCustomSignal, but using plain C primitives.
+SteamAPI_ISteamNetworkingSockets_ReceivedP2PCustomSignal2 :: (
+	self: *Sockets, pMsg: *void, cbMsg: s32,                                              //< Same as SteamAPI_ISteamNetworkingSockets_ReceivedP2PCustomSignal
+	ctx: *void,                                                                           //< pointer to something useful you understand.  Will be passed to your callbacks.
+	fnOnConnectRequest: FSteamNetworkingCustomSignalingRecvContext_OnConnectRequest,      //< callback for sending a signal.  Required.  See ISteamNetworkingSignalingRecvContext::OnConnectRequest
+	fnSendRejectionSignal: FSteamNetworkingCustomSignalingRecvContext_SendRejectionSignal //< callback when we wish to actively reject the connection.  Optional, pass NULL if you don't need this.  See ISteamNetworkingSignalingRecvContext::SendRejectionSignal
+) -> bool #foreign lib "SteamAPI_ISteamNetworkingSockets_ReceivedP2PCustomSignal2";
+
+
 #scope_file
 
 // See WrapISockets for API comments
 ISockets :: struct
 {   
-    CreateListenSocketIP        :: (self: *ISockets, localAddress: *IPAddr, nOptions: s32, pOptions: *ConfigValue) -> ListenSocket                               #foreign lib "SteamAPI_ISteamNetworkingSockets_CreateListenSocketIP";
-    ConnectByIPAddress          :: (self: *ISockets, address: *IPAddr, nOptions: s32, pOptions: *ConfigValue) -> NetConnection                                   #foreign lib "SteamAPI_ISteamNetworkingSockets_ConnectByIPAddress";
-    AcceptConnection            :: (self: *ISockets, conn: NetConnection) -> Result                                                                              #foreign lib "SteamAPI_ISteamNetworkingSockets_AcceptConnection";
-    CloseConnection             :: (self: *ISockets, peer: NetConnection, reason: ConnectionEnd, debugMessage: *s8, bEnableLinger: bool) -> bool                #foreign lib "SteamAPI_ISteamNetworkingSockets_CloseConnection";
-    CloseListenSocket           :: (self: *ISockets, socket: ListenSocket) -> bool                                                                               #foreign lib "SteamAPI_ISteamNetworkingSockets_CloseListenSocket";
-    SetConnectionUserData       :: (self: *ISockets, peer: NetConnection, nUserData: s64) -> bool                                                                #foreign lib "SteamAPI_ISteamNetworkingSockets_SetConnectionUserData";
-    GetConnectionUserData       :: (self: *ISockets, peer: NetConnection) -> s64                                                                                 #foreign lib "SteamAPI_ISteamNetworkingSockets_GetConnectionUserData";
-    SetConnectionName           :: (self: *ISockets, peer: NetConnection, name: *s8) -> void                                                                     #foreign lib "SteamAPI_ISteamNetworkingSockets_SetConnectionName";
-    GetConnectionName           :: (self: *ISockets, peer: NetConnection, name: *s8, maxLen: s32) -> bool                                                        #foreign lib "SteamAPI_ISteamNetworkingSockets_GetConnectionName";
-    SendMessageToConnection     :: (self: *ISockets, conn: NetConnection, data: *void, cbData: u32, sendFlags: NetworkingSend, pOutMessageNumber: *s64) -> Result#foreign lib "SteamAPI_ISteamNetworkingSockets_SendMessageToConnection";
-    SendMessages                :: (self: *ISockets, nMessages: s32, pMessages: **NetworkingMessage, pOutMessageNumberOrResult: *s64) -> void                    #foreign lib "SteamAPI_ISteamNetworkingSockets_SendMessages";
-    FlushMessagesOnConnection   :: (self: *ISockets, conn: NetConnection) -> Result                                                                              #foreign lib "SteamAPI_ISteamNetworkingSockets_FlushMessagesOnConnection";
-    ReceiveMessagesOnConnection :: (self: *ISockets, conn: NetConnection, ppOutMessages: **NetworkingMessage, nMaxMessages: s32) -> s32                          #foreign lib "SteamAPI_ISteamNetworkingSockets_ReceiveMessagesOnConnection";
-    GetConnectionInfo           :: (self: *ISockets, conn: NetConnection, info: *ConnectionInfo) -> bool                                                         #foreign lib "SteamAPI_ISteamNetworkingSockets_GetConnectionInfo";
-    GetQuickConnectionStatus    :: (self: *ISockets, conn: NetConnection, stats: *QuickConnectionStatus) -> bool                                                 #foreign lib "SteamAPI_ISteamNetworkingSockets_GetQuickConnectionStatus";
-    GetDetailedConnectionStatus :: (self: *ISockets, conn: NetConnection, buf: *s8, cbBuf: s32) -> s32                                                        #foreign lib "SteamAPI_ISteamNetworkingSockets_GetDetailedConnectionStatus";
-    GetListenSocketAddress      :: (self: *ISockets, socket: ListenSocket, address: *IPAddr) -> bool                                                             #foreign lib "SteamAPI_ISteamNetworkingSockets_GetListenSocketAddress";
+    CreateListenSocketIP        :: (self: *ISockets, localAddress: *IPAddr, nOptions: s32, pOptions: *ConfigValue) -> ListenSocket                #foreign lib "SteamAPI_ISteamNetworkingSockets_CreateListenSocketIP";
+    ConnectByIPAddress          :: (self: *ISockets, address: *IPAddr, nOptions: s32, pOptions: *ConfigValue) -> NetConnection                    #foreign lib "SteamAPI_ISteamNetworkingSockets_ConnectByIPAddress";
+    AcceptConnection            :: (self: *ISockets, conn: NetConnection) -> Result                                                               #foreign lib "SteamAPI_ISteamNetworkingSockets_AcceptConnection";
+    CloseConnection             :: (self: *ISockets, peer: NetConnection, reason: ConnectionEnd, debugMessage: *s8, bEnableLinger: bool) -> bool  #foreign lib "SteamAPI_ISteamNetworkingSockets_CloseConnection";
+    CloseListenSocket           :: (self: *ISockets, socket: ListenSocket) -> bool                                                                #foreign lib "SteamAPI_ISteamNetworkingSockets_CloseListenSocket";
+    SetConnectionUserData       :: (self: *ISockets, peer: NetConnection, nUserData: s64) -> bool                                                 #foreign lib "SteamAPI_ISteamNetworkingSockets_SetConnectionUserData";
+    GetConnectionUserData       :: (self: *ISockets, peer: NetConnection) -> s64                                                                  #foreign lib "SteamAPI_ISteamNetworkingSockets_GetConnectionUserData";
+    SetConnectionName           :: (self: *ISockets, peer: NetConnection, name: *s8) -> void                                                      #foreign lib "SteamAPI_ISteamNetworkingSockets_SetConnectionName";
+    GetConnectionName           :: (self: *ISockets, peer: NetConnection, name: *s8, maxLen: s32) -> bool                                         #foreign lib "SteamAPI_ISteamNetworkingSockets_GetConnectionName";
+    SendMessageToConnection     :: (self: *ISockets, conn: NetConnection, data: *void, cbData: u32, sendFlags: NetworkingSend, pOutMessageNumber: *s64) -> Result #foreign lib "SteamAPI_ISteamNetworkingSockets_SendMessageToConnection";
+    SendMessages                :: (self: *ISockets, nMessages: s32, pMessages: **NetworkingMessage, pOutMessageNumberOrResult: *s64) -> void     #foreign lib "SteamAPI_ISteamNetworkingSockets_SendMessages";
+    FlushMessagesOnConnection   :: (self: *ISockets, conn: NetConnection) -> Result                                                               #foreign lib "SteamAPI_ISteamNetworkingSockets_FlushMessagesOnConnection";
+    ReceiveMessagesOnConnection :: (self: *ISockets, conn: NetConnection, ppOutMessages: **NetworkingMessage, nMaxMessages: s32) -> s32           #foreign lib "SteamAPI_ISteamNetworkingSockets_ReceiveMessagesOnConnection";
+    GetConnectionInfo           :: (self: *ISockets, conn: NetConnection, info: *ConnectionInfo) -> bool                                          #foreign lib "SteamAPI_ISteamNetworkingSockets_GetConnectionInfo";
+    GetQuickConnectionStatus    :: (self: *ISockets, conn: NetConnection, stats: *QuickConnectionStatus) -> bool                                  #foreign lib "SteamAPI_ISteamNetworkingSockets_GetQuickConnectionStatus";
+    GetDetailedConnectionStatus :: (self: *ISockets, conn: NetConnection, buf: *s8, cbBuf: s32) -> s32                                            #foreign lib "SteamAPI_ISteamNetworkingSockets_GetDetailedConnectionStatus";
+    GetListenSocketAddress      :: (self: *ISockets, socket: ListenSocket, address: *IPAddr) -> bool                                              #foreign lib "SteamAPI_ISteamNetworkingSockets_GetListenSocketAddress";
     CreateSocketPair            :: (self: *ISockets, pOutConnection1: *NetConnection, pOutConnection2: *NetConnection, bUseNetworkLoopback: bool, pIdentity1: *Identity, pIdentity2: *Identity) -> bool #foreign lib "SteamAPI_ISteamNetworkingSockets_CreateSocketPair";
-    GetIdentity                 :: (self: *ISockets, pIdentity: *Identity) -> bool                                                                               #foreign lib "SteamAPI_ISteamNetworkingSockets_GetIdentity";
-    InitAuthentication          :: (self: *ISockets) -> NetworkAvailability                                                                                      #foreign lib "SteamAPI_ISteamNetworkingSockets_InitAuthentication";
-    GetAuthenticationStatus     :: (self: *ISockets, details: *AuthenticationStatus) -> NetworkAvailability                                                     #foreign lib "SteamAPI_ISteamNetworkingSockets_GetAuthenticationStatus";
-    CreatePollGroup             :: (self: *ISockets) -> PollGroup                                                                                                #foreign lib "SteamAPI_ISteamNetworkingSockets_CreatePollGroup";
-    DestroyPollGroup            :: (self: *ISockets, pollGroup: PollGroup) -> bool                                                                              #foreign lib "SteamAPI_ISteamNetworkingSockets_DestroyPollGroup";
-    SetConnectionPollGroup      :: (self: *ISockets, conn: NetConnection, pollGroup: PollGroup) -> bool                                                         #foreign lib "SteamAPI_ISteamNetworkingSockets_SetConnectionPollGroup";
-    ReceiveMessagesOnPollGroup  :: (self: *ISockets, pollGroup: PollGroup, ppOutMessages: **NetworkingMessage, nMaxMessages: s32) -> s32                        #foreign lib "SteamAPI_ISteamNetworkingSockets_ReceiveMessagesOnPollGroup";
-    GetCertificateRequest       :: (self: *ISockets, pcbBlob: *s32, pBlob: *void, errMsg: *NetworkingErrMsg) -> bool                                             #foreign lib "SteamAPI_ISteamNetworkingSockets_GetCertificateRequest";
-    SetCertificate              :: (self: *ISockets, pCertificate: *void, cbCertificate: s32, errMsg: *NetworkingErrMsg) -> bool                                 #foreign lib "SteamAPI_ISteamNetworkingSockets_SetCertificate";
-    RunCallbacks                :: (self: *ISockets) -> void                                                                                                     #foreign lib "SteamAPI_ISteamNetworkingSockets_RunCallbacks";
+    GetIdentity                 :: (self: *ISockets, pIdentity: *Identity) -> bool                                                                #foreign lib "SteamAPI_ISteamNetworkingSockets_GetIdentity";
+    InitAuthentication          :: (self: *ISockets) -> NetworkAvailability                                                                       #foreign lib "SteamAPI_ISteamNetworkingSockets_InitAuthentication";
+    GetAuthenticationStatus     :: (self: *ISockets, details: *AuthenticationStatus) -> NetworkAvailability                                       #foreign lib "SteamAPI_ISteamNetworkingSockets_GetAuthenticationStatus";
+    CreatePollGroup             :: (self: *ISockets) -> PollGroup                                                                                 #foreign lib "SteamAPI_ISteamNetworkingSockets_CreatePollGroup";
+    DestroyPollGroup            :: (self: *ISockets, pollGroup: PollGroup) -> bool                                                                #foreign lib "SteamAPI_ISteamNetworkingSockets_DestroyPollGroup";
+    SetConnectionPollGroup      :: (self: *ISockets, conn: NetConnection, pollGroup: PollGroup) -> bool                                           #foreign lib "SteamAPI_ISteamNetworkingSockets_SetConnectionPollGroup";
+    ReceiveMessagesOnPollGroup  :: (self: *ISockets, pollGroup: PollGroup, ppOutMessages: **NetworkingMessage, nMaxMessages: s32) -> s32          #foreign lib "SteamAPI_ISteamNetworkingSockets_ReceiveMessagesOnPollGroup";
+    GetCertificateRequest       :: (self: *ISockets, pcbBlob: *s32, pBlob: *void, errMsg: *NetworkingErrMsg) -> bool                              #foreign lib "SteamAPI_ISteamNetworkingSockets_GetCertificateRequest";
+    SetCertificate              :: (self: *ISockets, pCertificate: *void, cbCertificate: s32, errMsg: *NetworkingErrMsg) -> bool                  #foreign lib "SteamAPI_ISteamNetworkingSockets_SetCertificate";
+    RunCallbacks                :: (self: *ISockets) -> void                                                                                      #foreign lib "SteamAPI_ISteamNetworkingSockets_RunCallbacks";
 }
 #assert(size_of(ISockets) == 0);
 // See WrapIUtils for API comments

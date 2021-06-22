@@ -567,7 +567,7 @@ ServerNetConnectionStatusChanged :: (server : *ServerData, pInfo : *ConnectionSt
             // and you would keep their client in a state of limbo (connected,
             // but not logged on) until them.  I'm trying to keep this example
             // code really simple.
-            NickNames : [] string = .[ "BrakeWarrior", "GloriousGriefer", "PrettySoldier", "Katie", "MikeTruck"];
+            NickNames : [] string = .[ "BrakeWarrior", "GloriousGriefer", "PrettySoldier", "Pyro", "MikeTruck"];
             
             nameIndex  := random_get() % NickNames.count;
             nameNumber := 10000 + (random_get() % 100000);

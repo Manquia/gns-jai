@@ -57,7 +57,24 @@ UpdateChatWindow :: (chat : *ChatWindowData) -> is_quitting : bool #must
         }
     }
     
+    for Input.get_window_resizes() 
+    {
+        if it.window == the_window 
+        {
+            should_reinit := (it.width != chat.window_width) || (it.height != chat.window_height);
+            
+            chat.window_width  = it.width;
+            chat.window_height = it.height;
+
+            if should_reinit
+            {
+                window_resized_to(chat.window_width, chat.window_height);
+            }
+        }
+    }
+
     //  handle resizeing window
+    /*
     success, record := Input.is_a_window_resized();
     while success 
     {
@@ -70,6 +87,7 @@ UpdateChatWindow :: (chat : *ChatWindowData) -> is_quitting : bool #must
 
         success, record = Input.is_a_window_resized();
     }
+    */
 
     // Render text to window
     //
