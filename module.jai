@@ -47,6 +47,24 @@ GameNetworkingSockets :: struct
 
     GetISockets :: () -> *ISockets #foreign lib "SteamAPI_SteamNetworkingSockets_v009";
     GetIUtils   :: () -> *IUtils   #foreign lib "SteamAPI_SteamNetworkingUtils_v003";
+
+    // Custom memory allocation methods.  If you call this, you MUST call it exactly once,
+    // before calling any other API function.  *Most* allocations will pass through these,
+    // especially all allocations that are per-connection.  A few allocations
+    // might still go to the default CRT malloc and operator new.
+    // To use this, you must compile the library with STEAMNETWORKINGSOCKETS_ENABLE_MEM_OVERRIDE
+    //
+    // The included binaries in gns-jai DO NOT compile with STEAMNETWORKINGSOCKETS_ENABLE_MEM_OVERRIDE
+    // so you MUST make your own binaries to use this feature.
+    //
+    SetCustomMemoryAllocator :: (
+        pfn_malloc: Malloc,
+        pfn_free: Free,
+        pfn_realloc: Realloc) #foreign lib "SteamNetworkingSockets_SetCustomMemoryAllocator";
+
+    Malloc  :: #type (s: u64) -> *void;
+    Free    :: #type (p: *void);
+    Realloc :: #type (p: *void, s: u64) -> *void;
 }
 
 //-----------------------------------------------------------------------------
@@ -195,6 +213,22 @@ WrapISockets :: struct(s : () -> *ISockets)
     // - You can query it using GetConnectionUserData.
     // - The NetworkingMessage structure.
     // - The ConnectionInfo structure.  (Which is a member of ConnectionStatusChanged.)
+    //   (Which is a member of ConnectionStatusChangedFunctionType -- but see WARNINGS below!!!!)
+	//
+	// Do you need to set this atomically when the connection is created?
+	// See ConfigValueLabel.ConnectionUserData.
+	//
+	// WARNING: Be *very careful* when using the value provided in callbacks structs.
+	// Callbacks are queued, and the value that you will receive in your
+	// callback is the userdata that was effective at the time the callback
+	// was queued.  There are subtle race conditions that can hapen if you
+	// don't understand this!
+	//
+	// If any incoming messages for this connection are queued, the userdata
+	// field is updated, so that when when you receive messages (e.g. with
+	// ReceiveMessagesOnConnection), they will always have the very latest
+	// userdata.  So the tricky race conditions that can happen with callbacks
+	// do not apply to retrieving messages.
     //
     // Returns false if the handle is invalid.
     SetConnectionUserData :: (peer: NetConnection, nUserData: s64) -> bool { return s().SetConnectionUserData(s(), peer, nUserData); }
@@ -962,7 +996,7 @@ IPAddr :: struct
     IPv4 :: [16] u8;
 
     //
-    // @TODO @COMPILER BUG, Jai compiler version 0.50
+    // @TODO @COMPILER BUG, Jai compiler version 0.66
     // Using IPv4 gives the struct the incorrect size.
     //
     // IPv4 :: struct // IPv4 "mapped address" (rfc4038 section 4.2) 
@@ -982,14 +1016,32 @@ IPAddr :: struct
     m_port     : u16;
 
     // Functions
+
+    // Set everything to zero.  E.g. [::]:0
     Clear            :: (self: *IPAddr) -> void                         #foreign lib "SteamAPI_SteamNetworkingIPAddr_Clear";
+
+    // Return true if the IP is ::0.  (Doesn't check port.)
     IsIPv6AllZeros   :: (self: *IPAddr) -> bool                         #foreign lib "SteamAPI_SteamNetworkingIPAddr_IsIPv6AllZeros";
+
+    // Set IPv6 address.  IP is interpreted as bytes, so there are no endian issues.  (Same as inaddr_in6.)  The IP can be a mapped IPv4 address
     SetIPv6          :: (self: *IPAddr, ipv6: *u8, nPort: u16) -> void  #foreign lib "SteamAPI_SteamNetworkingIPAddr_SetIPv6";
+
+    // Sets to IPv4 mapped address.  IP and port are in host byte order.
     SetIPv4          :: (self: *IPAddr, nIP: u32, nPort: u16) -> void   #foreign lib "SteamAPI_SteamNetworkingIPAddr_SetIPv4";
+
+    // Return true if IP is mapped IPv4
     IsIPv4           :: (self: *IPAddr) -> bool                         #foreign lib "SteamAPI_SteamNetworkingIPAddr_IsIPv4";
+
+    // Returns IP in host byte order (e.g. aa.bb.cc.dd as 0xaabbccdd).  Returns 0 if IP is not mapped IPv4.
     GetIPv4          :: (self: *IPAddr) -> u32                          #foreign lib "SteamAPI_SteamNetworkingIPAddr_GetIPv4";
+
+    // Set to the IPv6 localhost address ::1, and the specified port.
     SetIPv6LocalHost :: (self: *IPAddr, nPort: u16) -> void             #foreign lib "SteamAPI_SteamNetworkingIPAddr_SetIPv6LocalHost";
+
+    // Return true if this identity is localhost.  (Either IPv6 ::1, or IPv4 127.0.0.1)
     IsLocalHost      :: (self: *IPAddr) -> bool                         #foreign lib "SteamAPI_SteamNetworkingIPAddr_IsLocalHost";
+
+    // See if two addresses are identical
     IsEqualTo        :: (self: *IPAddr, x: *IPAddr) -> bool             #foreign lib "SteamAPI_SteamNetworkingIPAddr_IsEqualTo";
 
     // Print to a string, with or without the port.  Mapped IPv4 addresses are printed
@@ -1091,6 +1143,18 @@ Identity :: struct
     GetSteamID64     :: (self: *Identity) -> u64                           #foreign lib "SteamAPI_SteamNetworkingIdentity_GetSteamID64";
     SetIPAddr        :: (self: *Identity, addr: *IPAddr) -> void           #foreign lib "SteamAPI_SteamNetworkingIdentity_SetIPAddr";
     GetIPAddr        :: (self: *Identity) -> *IPAddr                       #foreign lib "SteamAPI_SteamNetworkingIdentity_GetIPAddr";
+
+    SetIPv4Addr      :: inline (self: *Identity, nIPv4: u32, nPort: u16)
+    {
+        self.m_eType = .IPAddress;
+        self.m_cbSize = size_of(type_of(m_ip));
+        IPAddr.SetIPv4(*self.m_ip, nIPv4, nPort );
+    }
+    GetIPv4          :: inline (self: *Identity) -> u32
+    {
+        return ifx self.m_eType == .IPAddress then IPAddr.GetIPv4(*self.m_ip) else 0;
+    }
+    
     SetLocalHost     :: (self: *Identity) -> void                          #foreign lib "SteamAPI_SteamNetworkingIdentity_SetLocalHost";
     IsLocalHost      :: (self: *Identity) -> bool                          #foreign lib "SteamAPI_SteamNetworkingIdentity_IsLocalHost";
     SetGenericString :: (self: *Identity, pszString: *s8) -> bool          #foreign lib "SteamAPI_SteamNetworkingIdentity_SetGenericString";
@@ -1257,9 +1321,9 @@ ConnectionEnd :: enum s32
         // - etc
         Remote_BadCert :: 4003;
 
-        // We couldn't rendezvous with the remote host because
-        // they aren't logged into Steam
-        Remote_NotLoggedIn :: 4004;
+        // These will never be returned
+        // Remote_NotLoggedIn   :: 4004;
+        // Remote_NotRunningApp :: 4005;
 
         // Something wrong with the protocol version you are using.
         // (Probably the code you are running is too old.)
@@ -1306,16 +1370,14 @@ ConnectionEnd :: enum s32
 //
 // Enumerate different kinds of transport that can be used
 //
-TransportKind :: enum s32 
+ConnectionInfoFlags :: enum_flags s32 
 {
-    Unknown          :: 0;
-    LoopbackBuffers  :: 1; // Internal buffers, not using OS network stack
-    LocalHost        :: 2; // Using OS network stack to talk to localhost address
-    UDP              :: 3; // Ordinary UDP connection.
-    UDPProbablyLocal :: 4; // Ordinary UDP connection over a route that appears to be "local", meaning we think it is probably fast.  This is just a guess: VPNs and IPv6 make this pretty fuzzy.
-    TURN             :: 5; // Relayed over TURN server                                                       // gns-jai UNUSED
-    SDRP2P           :: 6; // P2P connection relayed over Steam Datagram Relay                               // gns-jai UNUSED
-    SDRHostedServer  :: 7; // Connection to a server hosted in a known data center via Steam Datagram Relay  // gns-jai UNUSED
+    Unauthenticated :: 1;  // We don't have a certificate for the remote host.
+    Unencrypted :: 2;      // Information is being sent out over a wire unencrypted (by this library)
+    LoopbackBuffers :: 4;  // Internal loopback buffers.  Won't be true for localhost.  (You can check the address to determine that.)  This implies ConnectionInfoFlags.Fast
+    Fast :: 8;             // The connection is "fast" and "reliable".  Either internal/localhost (check the address to find out), or the peer is on the same LAN.  (Probably.  It's based on the address and the ping time, this is actually hard to determine unambiguously).
+    Relayed :: 16;         // The connection is relayed somehow (SDR or TURN).
+    DualWifi :: 32;        // We're taking advantage of dual-wifi multi-path
 }
 
 //
@@ -1365,11 +1427,8 @@ ConnectionInfo :: struct
     // Max length, in bytes (include null terminator) of debug description of a connection.
     MaxConnectionDescriptionSize :: 128;
 
-    // What kind of transport is currently being used?
-    // Note that this is potentially a dynamic property!  Also, it may not
-    // always be available, especially right as the connection starts, or
-    // after the connection ends.
-    m_eTransportKind: TransportKind;
+    /// Misc flags.  Bitmask of ConnectionInfoFlags.Xxxx
+    m_nFlags: ConnectionInfoFlags;
 
     // Internal stuff, room to change API easily
     reserved: [63] u32;
@@ -1494,31 +1553,9 @@ ConfigValueLabel :: enum s32
 {
     Invalid :: 0;
 
-    // [global float, 0--100] Randomly discard N pct of packets instead of sending/recv
-    // This is a global option only, since it is applied at a low level
-    // where we don't have much context
-    FakePacketLoss_Send :: 2;
-    FakePacketLoss_Recv :: 3;
-
-    // [global int32].  Delay all outbound/inbound packets by N ms
-    FakePacketLag_Send :: 4;
-    FakePacketLag_Recv :: 5;
-
-    // [global float] 0-100 Percentage of packets we will add additional delay
-    // to (causing them to be reordered)
-    FakePacketReorder_Send :: 6;
-    FakePacketReorder_Recv :: 7;
-
-    // [global int32] Extra delay, in ms, to apply to reordered packets.
-    FakePacketReorder_Time :: 8;
-
-    // [global float 0--100] Globally duplicate some percentage of packets we send
-    FakePacketDup_Send :: 26;
-    FakePacketDup_Recv :: 27;
-
-    // [global int32] Amount of delay, in ms, to delay duplicated packets.
-    // (We chose a random delay between 0 and this value)
-    FakePacketDup_TimeMax :: 28;
+    //
+    // Connection options
+    //
 
     // [connection int32] Timeout value (in ms) to use when first connecting
     TimeoutInitial :: 24;
@@ -1530,6 +1567,41 @@ ConfigValueLabel :: enum s32
     // if this is reached SendMessage will return Result.LimitExceeded
     // Default is 512k (524288 bytes)
     SendBufferSize :: 9;
+
+	/// [connection int64] Get/set userdata as a configuration option.
+	/// The default value is -1.   You may want to set the user data as
+	/// a config value, instead of using ISteamNetworkingSockets::SetConnectionUserData
+	/// in two specific instances:
+	///
+	/// - You wish to set the userdata atomically when creating
+	///   an outbound connection, so that the userdata is filled in properly
+	///   for any callbacks that happen.  However, note that this trick
+	///   only works for connections initiated locally!  For incoming
+	///   connections, multiple state transitions may happen and
+	///   callbacks be queued, before you are able to service the first
+	///   callback!  Be careful!
+	///
+	/// - You can set the default userdata for all newly created connections
+	///   by setting this value at a higher level (e.g. on the listen
+	///   socket or at the global level.)  Then this default
+	///   value will be inherited when the connection is created.
+	///   This is useful in case -1 is a valid userdata value, and you
+	///   wish to use something else as the default value so you can
+	///   tell if it has been set or not.
+	///
+	///   HOWEVER: once a connection is created, the effective value is
+	///   then bound to the connection.  Unlike other connection options,
+	///   if you change it again at a higher level, the new value will not
+	///   be inherited by connections.
+	///
+	/// Using the userdata field in callback structs is not advised because
+	/// of tricky race conditions.  Instead, you might try one of these methods:
+	///
+	/// - Use a separate map with the HSteamNetConnection as the key.
+	/// - Fetch the userdata from the connection in your callback
+	///   using ISockets::GetConnectionUserData, to
+	//    ensure you have the current value.
+	ConnectionUserData :: 40;
 
     // [connection int32] Minimum/maximum send rate clamp, 0 is no limit.
     // This value will control the min/max allowed sending rate that 
@@ -1575,19 +1647,6 @@ ConfigValueLabel :: enum s32
     // You should not let users modify it in production.  (But note that it requires
     // the peer to also modify their value in order for encryption to be disabled.)
     Unencrypted :: 34;
-
-    // [global int32] 0 or 1.  Some variables are "dev" variables.  They are useful
-    // for debugging, but should not be adjusted in production.  When this flag is false (the default),
-    // such variables will not be enumerated by the IUtils.GetFirstConfigValue
-    // IUtils.GetConfigValueInfo functions.  The idea here is that you
-    // can use those functions to provide a generic mechanism to set any configuration
-    // value from a console or configuration file, looking up the variable by name.  Depending
-    // on your game, modifying other configuration values may also have negative effects, and
-    // you may wish to further lock down which variables are allowed to be modified by the user.
-    // (Maybe no variables!)  Or maybe you use a whitelist or blacklist approach.
-    //
-    // (This flag is itself a dev variable.)
-    EnumerateDevVars :: 35;
 
     // [connection int32] Set this to 1 on outbound connections and listen sockets,
     // to enable "symmetric connect mode", which is useful in the following
@@ -1691,6 +1750,58 @@ ConfigValueLabel :: enum s32
     LocalVirtualPort :: 38;
 
     //
+    // Simulating network conditions
+    //
+    // These are global (not per-connection) because they apply at
+    // a relatively low UDP layer.
+    //
+
+	/// [global float, 0--100] Randomly discard N pct of packets instead of sending/recv
+	/// This is a global option only, since it is applied at a low level
+	/// where we don't have much context
+	FakePacketLoss_Send :: 2;
+	FakePacketLoss_Recv :: 3;
+
+	/// [global int32].  Delay all outbound/inbound packets by N ms
+	FakePacketLag_Send :: 4;
+	FakePacketLag_Recv :: 5;
+
+	/// [global float] 0-100 Percentage of packets we will add additional delay
+	/// to (causing them to be reordered)
+	FakePacketReorder_Send :: 6;
+	FakePacketReorder_Recv :: 7;
+
+	/// [global int32] Extra delay, in ms, to apply to reordered packets.
+	FakePacketReorder_Time :: 8;
+
+	/// [global float 0--100] Globally duplicate some percentage of packets we send
+	FakePacketDup_Send :: 26;
+	FakePacketDup_Recv :: 27;
+
+	/// [global int32] Amount of delay, in ms, to delay duplicated packets.
+	/// (We chose a random delay between 0 and this value)
+	FakePacketDup_TimeMax :: 28;
+
+	/// [global int32] Trace every UDP packet, similar to Wireshark or tcpdump.
+	/// Value is max number of bytes to dump.  -1 disables tracing.
+	// 0 only traces the info but no actual data bytes
+	PacketTraceMaxBytes :: 41;
+
+
+	// [global int32] Global UDP token bucket rate limits.
+	// "Rate" refers to the steady state rate. (Bytes/sec, the
+	// rate that tokens are put into the bucket.)  "Burst"
+	// refers to the max amount that could be sent in a single
+	// burst.  (In bytes, the max capacity of the bucket.)
+	// Rate=0 disables the limiter entirely, which is the default.
+	// Burst=0 disables burst.  (This is not realistic.  A
+	// burst of at least 4K is recommended; the default is higher.)
+	FakeRateLimit_Send_Rate :: 42;
+	FakeRateLimit_Send_Burst :: 43;
+	FakeRateLimit_Recv_Rate :: 44;
+	FakeRateLimit_Recv_Burst :: 45;
+
+    //
     // Callbacks
     //
 
@@ -1738,6 +1849,24 @@ ConfigValueLabel :: enum s32
     // See: IUtils.SetGlobalCallbackAuthenticationStatusChanged
     Callback_AuthStatusChanged :: 202;
 
+    //
+    // Misc / debugging
+    //
+
+	// [global int32] 0 or 1.  Some variables are "dev" variables.  They are useful
+	// for debugging, but should not be adjusted in production.  When this flag is false (the default),
+	// such variables will not be enumerated by the ISteamnetworkingUtils::GetFirstConfigValue
+	// ISteamNetworkingUtils::GetConfigValueInfo functions.  The idea here is that you
+	// can use those functions to provide a generic mechanism to set any configuration
+	// value from a console or configuration file, looking up the variable by name.  Depending
+	// on your game, modifying other configuration values may also have negative effects, and
+	// you may wish to further lock down which variables are allowed to be modified by the user.
+	// (Maybe no variables!)  Or maybe you use a whitelist or blacklist approach.
+	//
+	// (This flag is itself a dev variable.)
+	EnumerateDevVars :: 35;
+
+    //
     // Log levels for debugging information of various subsystems.
     // Higher numeric values will cause more stuff to be printed.
     // See IUtils.SetDebugOutputFunction for more
@@ -1902,7 +2031,7 @@ ISteamNetworkingConnectionSignaling :: void;
 //
 // Custom signaling functions
 //
-FSteamNetworkingSocketsCustomSignaling_SendSignal :: #type (ctx: *void, hConn: NetConnection, info: *ConnectionInfo, pMsg: *void, cbMsg: s32 ) -> bool #c_call;
+FSteamNetworkingSocketsCustomSignaling_SendSignal :: #type (ctx: *void, hConn: NetConnection, info: *ConnectionInfo, pMsg: *void, cbMsg: s32) -> bool #c_call;
 FSteamNetworkingSocketsCustomSignaling_Release    :: #type (ctx: *void) #c_call;
 SteamAPI_ISteamNetworkingSockets_CreateCustomSignaling :: (
     ctx: *void,                                                      //< pointer to something useful you understand.  Will be passed to your callbacks.
@@ -1912,9 +2041,8 @@ SteamAPI_ISteamNetworkingSockets_CreateCustomSignaling :: (
 
 FSteamNetworkingCustomSignalingRecvContext_OnConnectRequest    :: #type (ctx: *void, hConn: NetConnection, identityPeer: *Identity, nLocalVirtualPort: s32) -> *ISteamNetworkingConnectionSignaling #c_call;
 FSteamNetworkingCustomSignalingRecvContext_SendRejectionSignal :: #type (ctx: *void, identityPeer: *Identity, pMsg: *void, cbMsg: s32) #c_call;
-// Same as SteamAPI_ISteamNetworkingSockets_ReceivedP2PCustomSignal, but using plain C primitives.
-SteamAPI_ISteamNetworkingSockets_ReceivedP2PCustomSignal2 :: (
-	self: *Sockets, pMsg: *void, cbMsg: s32,                                              //< Same as SteamAPI_ISteamNetworkingSockets_ReceivedP2PCustomSignal
+SteamAPI_ISteamNetworkingSockets_ReceivedP2PCustomSignal2 :: (                            //  Same as SteamAPI_ISteamNetworkingSockets_ReceivedP2PCustomSignal, but using plain C primitives.
+	self: *ISockets, pMsg: *void, cbMsg: s32,                                             //< Same as SteamAPI_ISteamNetworkingSockets_ReceivedP2PCustomSignal
 	ctx: *void,                                                                           //< pointer to something useful you understand.  Will be passed to your callbacks.
 	fnOnConnectRequest: FSteamNetworkingCustomSignalingRecvContext_OnConnectRequest,      //< callback for sending a signal.  Required.  See ISteamNetworkingSignalingRecvContext::OnConnectRequest
 	fnSendRejectionSignal: FSteamNetworkingCustomSignalingRecvContext_SendRejectionSignal //< callback when we wish to actively reject the connection.  Optional, pass NULL if you don't need this.  See ISteamNetworkingSignalingRecvContext::SendRejectionSignal
